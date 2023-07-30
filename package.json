@@ -1,0 +1,30 @@
+{
+  "name": "oaf",
+  "version": "0.0.1",
+  "description": "a library for utilizing openAI functions",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "/dist"
+  ],
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "."
+  },
+  "keywords": [
+    "openAI",
+    "functions"
+  ],
+  "author": "harshav17",
+  "license": "ISC",
+  "dependencies": {
+    "debug": "^4.3.4",
+    "openai": "^3.3.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.4.5"
+  }
+}
