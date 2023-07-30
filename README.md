@@ -22,7 +22,7 @@ async function main() {
                 
                 You Must Always:
                 1. Think step by step
-                2. Once you think you have given the answer, you should respond to all future prompts with ${finString}.
+                2. Once you think you have given the answer, you should respond with ${finString}.
             `,
         },
         {
