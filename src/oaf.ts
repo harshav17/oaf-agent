@@ -6,15 +6,16 @@ import debugModule from "debug";
 const decoder = new TextDecoder("utf-8");
 const debug = debugModule("oaf:core");
 
-export async function callOaf(messages: ChatCompletionRequestMessage[], res: Writable, funcs: any, funcDescs: ChatCompletionFunctions[], configuration: Configuration) {
+export async function callOaf(messages: ChatCompletionRequestMessage[], res: Writable, funcs: any, funcDescs: ChatCompletionFunctions[], configuration: Configuration, finString: string) {
     const openai = new OpenAIApi(configuration);
     debug("Started oaf with messages: %o", messages);
-    await callOafHelper(messages, res, false, openai, funcs, funcDescs);
+    await callOafHelper(messages, res, false, openai, funcs, funcDescs, finString);
 }
 
-async function callOafHelper(messages: ChatCompletionRequestMessage[], res: Writable, isRecursive: boolean = false, openai: OpenAIApi, funcs: any, funcDescs: ChatCompletionFunctions[]) {
+async function callOafHelper(messages: ChatCompletionRequestMessage[], res: Writable, isRecursive: boolean = false, openai: OpenAIApi, funcs: any, funcDescs: ChatCompletionFunctions[], finString: string) {
     let functionCalls: any[] = [];
     let currentFunctionCallName = "";
+    let currentMessageFromGPT = "";
     debug("Started oaf with funcs: %o", funcDescs);
     try {
         const completion = await openai.createChatCompletion(
@@ -53,6 +54,7 @@ async function callOafHelper(messages: ChatCompletionRequestMessage[], res: Writ
                 if (finish_reason) {
                     break;
                 } else if (content) {
+                    currentMessageFromGPT += content;
                     res.write(content);
                 } else if (function_call) {
                     if (function_call.name) {
@@ -97,12 +99,23 @@ async function callOafHelper(messages: ChatCompletionRequestMessage[], res: Writ
                 });
 
                 debug("Recursively calling oaf with messages: %o", messages)
-                await callOafHelper(messages, res, true, openai, funcs, funcDescs);
+                await callOafHelper(messages, res, true, openai, funcs, funcDescs, finString);
             }
         }
-        if (!isRecursive) {
+
+
+        if (!isRecursive || currentMessageFromGPT.trim().length === 0 || currentMessageFromGPT.includes(finString)) {
             res.end();
+            return;
         }
+
+        // otherwise, continue recursing
+        messages.push({
+            role: ChatCompletionRequestMessageRoleEnum.Assistant,
+            content: currentMessageFromGPT,
+        });
+        debug("Not finished yet. Recursively calling oaf with messages: %o", messages)
+        await callOafHelper(messages, res, true, openai, funcs, funcDescs, finString);
     } catch (e) {
         debug("Error: %o", e);
         res.emit("error", e);

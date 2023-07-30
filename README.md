@@ -12,10 +12,18 @@ npm link ../oaf
 ## example code to use the library
 ```
 async function main() {
+    const finString = "[finished]";
     let messages: ChatCompletionRequestMessage[] = [
         {
             role: ChatCompletionRequestMessageRoleEnum.System,
-            content: "You are an assistant augmented with the functions provided. Utilize them to complete the tasks given to you.",
+            content: dedent`
+                You are an assistant augmented with the functions provided. 
+                Utilize them to complete the tasks given to you.
+                
+                You Must Always:
+                1. Think step by step
+                2. Once you think you have given the answer, you should respond to all future prompts with ${finString}.
+            `,
         },
         {
             role: ChatCompletionRequestMessageRoleEnum.User,
@@ -32,6 +40,7 @@ async function main() {
         console.error(err);
     });
 
-    await callOaf(messages, stream, funs, functionsForModel, configuration);
+    const funs: Record<string, (...args: any[]) => any> = funcs;
+    await callOaf(messages, stream, funs, functionsForModel, configuration, finString);
 }
 ```
