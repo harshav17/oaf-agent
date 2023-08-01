@@ -87,7 +87,6 @@ async function callOafHelper(messages: ChatCompletionRequestMessage[], res: Writ
         for (let functionCall of functionCalls) {
             const func = (funcs as any)[String(functionCall.name)];
             if (func) {
-                debug("Calling function %s with args %o", functionCall.name, functionCall.argsString);
                 const args = JSON.parse(functionCall.argsString);
                 const funcRes = await func(args);
 
@@ -101,7 +100,7 @@ async function callOafHelper(messages: ChatCompletionRequestMessage[], res: Writ
                 });
                 messages.push({
                     role: ChatCompletionRequestMessageRoleEnum.Function,
-                    content: funcRes,
+                    content: JSON.stringify(funcRes),
                     name: functionCall.name,
                 });
 
@@ -109,7 +108,7 @@ async function callOafHelper(messages: ChatCompletionRequestMessage[], res: Writ
                 const isFinished = await callOafHelper(messages, res, true, openai, funcs, funcDescs, finString);
                 if (isFinished) {
                     if (!isRecursive) {
-                        debug("Finished. Returning true.")
+                        debug("LOC 1. Finished. Returning true.")
                         res.end();
                     }
                     return true;
@@ -118,20 +117,21 @@ async function callOafHelper(messages: ChatCompletionRequestMessage[], res: Writ
         }
 
 
-        if (currentMessageFromGPT.trim().length === 0 || currentMessageFromGPT.includes(finString)) {
+        if (currentMessageFromGPT.includes(finString)) {
             if (!isRecursive) {
-                debug("Finished. Returning true.")
                 res.end();
             }
+            debug("currentMessageFromGPT: %s", currentMessageFromGPT)
+            debug("LOC2. Finished. Returning true.")
             return true;
         } else {
             // otherwise, continue recursing
-            debug("currentMessageFromGPT: %s, finString: %s", currentMessageFromGPT, finString)
+            debug("currentMessageFromGPT: %s", currentMessageFromGPT)
             debug("Not finished yet. Recursively calling oaf with messages: %o", messages)
             const isFinished = await callOafHelper(messages, res, true, openai, funcs, funcDescs, finString);
             if (isFinished) {
                 if (!isRecursive) {
-                    debug("Finished. Returning true.")
+                    debug("LOC 3. Finished. Returning true.")
                     res.end();
                 }
                 return true;
