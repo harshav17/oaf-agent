@@ -1,1 +1,1 @@
-export { callOaf } from "./oaf";
+export { callOaf, OafOptions } from "./oaf";

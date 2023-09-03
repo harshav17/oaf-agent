@@ -1,6 +1,6 @@
 {
-  "name": "oaf",
-  "version": "0.0.1",
+  "name": "oaf-agent",
+  "version": "0.0.2",
   "description": "a library for utilizing openAI functions",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
