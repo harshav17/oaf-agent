@@ -10,34 +10,38 @@ export type OafOptions = {
     finString: string;
     funcs?: any;
     funcDescs?: ChatCompletionFunctions[];
+    model?: string;
+    max_tokens?: number;
+    tempature?: number;
 };
 export async function callOaf(messages: ChatCompletionRequestMessage[], res: Writable, configuration: Configuration, options: OafOptions) {
     const openai = new OpenAIApi(configuration);
     debug("Started oaf with messages: %o", messages);
 
-    const { finString, funcs, funcDescs } = options;
+    const { funcs, funcDescs } = options;
 
     if (!funcs && !funcDescs) {
         debug("No functions provided. Calling non-oaf.")
-        await callNonOafHelper(messages, res, false, openai, finString);
+        await callNonOafHelper(messages, res, false, openai, options);
     } else if (funcs && funcDescs) {
         debug("Functions provided. Calling oaf.")
-        await callOafHelper(messages, res, false, openai, funcs, funcDescs, finString);
+        await callOafHelper(messages, res, false, openai, funcs, funcDescs, options);
     } else {
         throw new Error("Either both funcs and funcDescs must be provided, or neither.");
     }
 }
 
-async function callNonOafHelper(messages: ChatCompletionRequestMessage[], res: Writable, isRecursive: boolean = false, openai: OpenAIApi, finString: string) {
+async function callNonOafHelper(messages: ChatCompletionRequestMessage[], res: Writable, isRecursive: boolean = false, openai: OpenAIApi, options: OafOptions) {
+    const { finString, model, max_tokens, tempature } = options;
     let currentMessageFromGPT = "";
     try {
         const completion = await openai.createChatCompletion(
             {
-                model: "gpt-4-0613", // TODO: Make this configurable
+                model: model || "gpt-4-0613", // TODO: Make this configurable
                 messages: messages,
                 stream: true,
-                max_tokens: 1000,
-                temperature: 0.5,
+                max_tokens: max_tokens || 2000,
+                temperature: tempature || 0.5,
             },
             { responseType: "stream" },
         );
@@ -90,7 +94,7 @@ async function callNonOafHelper(messages: ChatCompletionRequestMessage[], res: W
             // otherwise, continue recursing
             debug("currentMessageFromGPT: %s", currentMessageFromGPT)
             debug("Not finished yet. Recursively calling oaf with messages: %o", messages)
-            const isFinished = await callNonOafHelper(messages, res, true, openai, finString);
+            const isFinished = await callNonOafHelper(messages, res, true, openai, options);
             if (isFinished) {
                 if (!isRecursive) {
                     debug("LOC 3. Finished. Returning true.")
@@ -106,7 +110,8 @@ async function callNonOafHelper(messages: ChatCompletionRequestMessage[], res: W
     }
 }
 
-async function callOafHelper(messages: ChatCompletionRequestMessage[], res: Writable, isRecursive: boolean = false, openai: OpenAIApi, funcs: any, funcDescs: ChatCompletionFunctions[], finString: string) {
+async function callOafHelper(messages: ChatCompletionRequestMessage[], res: Writable, isRecursive: boolean = false, openai: OpenAIApi, funcs: any, funcDescs: ChatCompletionFunctions[], options: OafOptions) {
+    const { finString, model, max_tokens, tempature } = options;
     let functionCalls: any[] = [];
     let currentFunctionCallName = "";
     let currentMessageFromGPT = "";
@@ -114,11 +119,11 @@ async function callOafHelper(messages: ChatCompletionRequestMessage[], res: Writ
     try {
         const completion = await openai.createChatCompletion(
             {
-                model: "gpt-4-0613", // TODO: Make this configurable
+                model: model || "gpt-4-0613", // TODO: Make this configurable
                 messages: messages,
                 stream: true,
-                max_tokens: 1000,
-                temperature: 0.5,
+                max_tokens: max_tokens || 2000,
+                temperature: tempature || 0.5,
                 functions: funcDescs,
                 function_call: "auto",
             },
@@ -127,15 +132,26 @@ async function callOafHelper(messages: ChatCompletionRequestMessage[], res: Writ
 
         const stream = completion.data as unknown as IncomingMessage;
 
+        let partialLine = "";
         for await (const chunk of stream) {
             const value = decoder.decode(chunk);
             const lines = value.split("\n");
+            lines[0] = partialLine + lines[0]; // prepend the leftover from the last chunk to the first line
+            partialLine = lines.pop() || ""; // save the last line as it may be incomplete
+
             const parsedLines: any = lines
                 .map((line) => line.replace("data: ", "")) // Remove the "data: " prefix
                 .filter((line) => line !== "" && line !== "[DONE]") // Remove empty lines and "[DONE]"
                 .map((line) => {
-                    return JSON.parse(line);
-                });
+                    try {
+                        return JSON.parse(line);
+                    } catch(e) {
+                        debug("Error parsing line: %s", line);
+                        debug("Error details: %o", e);
+                        return null;
+                    }
+                })
+                .filter(line => line !== null); // Remove null lines
 
             for (const parsedLine of parsedLines) {
                 const { error, choices } = parsedLine;
@@ -152,9 +168,11 @@ async function callOafHelper(messages: ChatCompletionRequestMessage[], res: Writ
                     res.write(content);
                 } else if (function_call) {
                     if (function_call.name) {
+                        res.write(function_call.name);
                         currentFunctionCallName = function_call.name;
                     }
                     if (function_call.arguments) {
+                        res.write(function_call.arguments);
                         let existingFunctionCall = functionCalls.find((call) => call.name === currentFunctionCallName);
                         if (existingFunctionCall) {
                             // If a function call with the same name already exists, append the args
@@ -181,7 +199,8 @@ async function callOafHelper(messages: ChatCompletionRequestMessage[], res: Writ
         for (let functionCall of functionCalls) {
             const func = (funcs as any)[String(functionCall.name)];
             if (func) {
-                const args = JSON.parse(functionCall.argsString);
+                debug("Calling function %s with args %o", functionCall.name, functionCall.argsString);
+                const args = JSON.parse(functionCall.argsString.replace(/\r?\n|\r/g, ''));
                 const funcRes = await func(args);
 
                 messages.push({
@@ -199,7 +218,7 @@ async function callOafHelper(messages: ChatCompletionRequestMessage[], res: Writ
                 });
 
                 debug("Recursively calling oaf with messages: %o", messages)
-                const isFinished = await callOafHelper(messages, res, true, openai, funcs, funcDescs, finString);
+                const isFinished = await callOafHelper(messages, res, true, openai, funcs, funcDescs, options);
                 if (isFinished) {
                     if (!isRecursive) {
                         debug("LOC 1. Finished. Returning true.")
@@ -222,7 +241,7 @@ async function callOafHelper(messages: ChatCompletionRequestMessage[], res: Writ
             // otherwise, continue recursing
             debug("currentMessageFromGPT: %s", currentMessageFromGPT)
             debug("Not finished yet. Recursively calling oaf with messages: %o", messages)
-            const isFinished = await callOafHelper(messages, res, true, openai, funcs, funcDescs, finString);
+            const isFinished = await callOafHelper(messages, res, true, openai, funcs, funcDescs, options);
             if (isFinished) {
                 if (!isRecursive) {
                     debug("LOC 3. Finished. Returning true.")
