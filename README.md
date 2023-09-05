@@ -1,3 +1,5 @@
+[npm package](https://www.npmjs.com/package/oaf-agent)
+
 ## Setup oaf
 ```
 npm install
