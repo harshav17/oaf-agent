@@ -1,6 +1,6 @@
 {
   "name": "oaf-agent",
-  "version": "0.0.8",
+  "version": "0.0.9",
   "description": "a library for utilizing openAI functions",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -22,12 +22,12 @@
   "license": "ISC",
   "dependencies": {
     "debug": "^4.3.4",
-    "openai": "^3.3.0"
+    "openai": "^4.10.0"
   },
   "volta": {
     "node": "18.6.0"
   },
   "devDependencies": {
-    "@types/node": "^20.5.9"
+    "@types/node": "^20.6.5"
   }
 }
