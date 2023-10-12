@@ -1,8 +1,6 @@
 import OpenAI, { ClientOptions } from "openai";
-import { IncomingMessage } from "http";
-import { Writable } from "node:stream";
 import debugModule from "debug";
-import { ChatCompletionMessageParam, Chat, ChatCompletionCreateParams } from "openai/resources/chat";
+import { ChatCompletionMessageParam, ChatCompletionCreateParams } from "openai/resources/chat";
 
 const decoder = new TextDecoder("utf-8");
 const debug = debugModule("oaf:core");
