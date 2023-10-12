@@ -20,13 +20,19 @@ export type OafOptions = {
     tempature?: number;
     shouldRecurse?: boolean;
 };
-export async function callOaf(messages: ChatCompletionMessageParam[], res: Writable, clientOpts: ClientOptions, options: OafOptions) {
+export async function callOaf(messages: ChatCompletionMessageParam[], clientOpts: ClientOptions, options: OafOptions) {
     const openai = new OpenAI(clientOpts);
     debug("Started oaf with messages: %o", messages);
-    await callOafHelper(messages, res, openai, options);
+
+	let { readable, writable } = new TransformStream();
+	let writer = writable.getWriter();
+    
+    callOafHelper(messages, writer, openai, options);
+
+    return new Response(readable);
 }
 
-async function callOafHelper(messages: ChatCompletionMessageParam[], res: Writable, openai: OpenAI, options: OafOptions, isRecursive: boolean = false, ) {
+async function callOafHelper(messages: ChatCompletionMessageParam[], writer: WritableStreamDefaultWriter<any>, openai: OpenAI, options: OafOptions, isRecursive: boolean = false) {
     const { finString, model, max_tokens, tempature, funcDescs, funcs, shouldRecurse } = options;
     let functionCalls: any[] = [];
     let currentFunctionCallName = "";
@@ -42,6 +48,7 @@ async function callOafHelper(messages: ChatCompletionMessageParam[], res: Writab
             temperature: tempature || DEFAULT_TEMPERATURE,
             max_tokens: max_tokens || DEFAULT_MAX_TOKENS,
         });
+
         for await (const part of stream) {
             const { finish_reason } = part.choices[0];
             const { content, function_call } = part.choices[0].delta;
@@ -49,14 +56,14 @@ async function callOafHelper(messages: ChatCompletionMessageParam[], res: Writab
                 break;
             } else if (content) {
                 currentMessageFromGPT += content;
-                res.write(content);
+                writer.write(content);
             } else if (function_call) {
                 if (function_call.name) {
-                    res.write(function_call.name);
+                    writer.write(function_call.name);
                     currentFunctionCallName = function_call.name;
                 }
                 if (function_call.arguments) {
-                    res.write(function_call.arguments);
+                    writer.write(function_call.arguments);
                     let existingFunctionCall = functionCalls.find((call) => call.name === currentFunctionCallName);
                     if (existingFunctionCall) {
                         // If a function call with the same name already exists, append the args
@@ -105,23 +112,23 @@ async function callOafHelper(messages: ChatCompletionMessageParam[], res: Writab
         if (!shouldRecurse || currentMessageFromGPT.includes(finString)) {
             debug("currentMessageFromGPT: %s", currentMessageFromGPT)
             debug("LOC 2. Finished. Returning true.")
-            res.end();
+            writer.close();
         } else {
             // otherwise, continue recursing
             debug("currentMessageFromGPT: %s", currentMessageFromGPT)
             debug("Not finished yet. Recursively calling oaf with messages: %o", messages)
-            const isFinished = await callOafHelper(messages, res, openai, options, true);
+            const isFinished = await callOafHelper(messages, writer, openai, options, true);
             if (isFinished) {
                 if (!isRecursive) {
                     debug("LOC 3. Finished. Returning true.")
-                    res.end();
+                    writer.close();
                 }
                 return true;
             }
         }
     } catch (e) {
         debug("Error: %o", e);
-        res.emit("error", e);
-        res.end();
+        writer.write("Error: " + e);
+        writer.close();
     }
 }
